@@ -24,7 +24,7 @@ def rawbytes(s):
     outlist = []
     for cp in s:
         num = ord(cp)
-        if num < 255:
+        if num < 256:
             outlist.append(struct.pack('B', num))
         elif num < 65535:
             outlist.append(struct.pack('>H', num))
@@ -103,6 +103,13 @@ def to_binary(enc_text):
         result += bin_byte
     return result
 
+def huf_compress(input, huffman_codes):
+    enc_text = ''
+    for i in input:
+        ch = chr(i)
+        enc_text += huffman_codes[ch]
+    return enc_text
+
 def huf_decompress(bin_encoded_text, inv_huffman_codes):
     text = ''
     next_code = ''
@@ -112,6 +119,44 @@ def huf_decompress(bin_encoded_text, inv_huffman_codes):
             text += inv_huffman_codes[next_code]
             next_code = ''
     return text
+
+def write_sig(file):
+    file.write(b"HUF")
+
+def write_header(file, dict_chars):
+    col_letters = len(dict_chars.keys()).to_bytes(2, byteorder='little')
+    print(col_letters)
+    file.write(col_letters)
+    print(dict_chars)
+    for letter, code in dict_chars.items():
+        #print(rawbytes(letter), code.to_bytes(4, byteorder='little'))
+        file.write(rawbytes(letter))
+        file.write(code.to_bytes(4, byteorder='little'))
+
+def write_text(file, enc_text):
+    enc_text_pad = pad_encoded_text(enc_text)
+    out = get_byte_array(enc_text_pad)
+    file.write(bytes(out))
+
+def generate_sort_leafs(dict_chars):
+    return sorted([Leaf(dict_chars[i], i) for i in dict_chars])
+
+def parse_header(input):
+    col_letters = int.from_bytes(input[3:5], byteorder='little')
+    header = input[5:5*col_letters + 5]
+    print(header)
+    dict_chars = dict()
+    for i in range(col_letters):
+        print(i, header[i*5], int.from_bytes(header[i*5+1:i*5+5], byteorder='little'))
+        dict_chars[chr(header[i*5])] = int.from_bytes(header[i*5+1:i*5+5], byteorder='little')
+    print(col_letters)
+    print(dict_chars)
+    return dict_chars
+
+def parse_text(input):
+    col_letters = int.from_bytes(input[3:5], byteorder='little')
+    enc_text_pad = input[5*col_letters + 5:]
+    return enc_text_pad
 
 def help():
     return "Using: huf [(c)ompress\\(d)ecompress] <input_file> <output_file>"
@@ -125,27 +170,17 @@ def compress():
 
     dict_chars = counting_charaters(input)
     print(dict_chars)
-    sort_list_leafs = sorted([Leaf(dict_chars[i], i) for i in dict_chars])
+    sort_list_leafs = generate_sort_leafs(dict_chars)
     root_node = generate_tree(sort_list_leafs)
     huffman_codes = generate_huffman(root_node)
     print(huffman_codes)
+    enc_text = huf_compress(input, huffman_codes)   
 
     f = open(filenameout, 'wb')
-    f.write(b"HUF") # signature
-    col_letters = len(huffman_codes.keys()).to_bytes(1, byteorder='little')
-    print(col_letters)
-    f.write(col_letters)
-    for letter, code in dict_chars.items():
-        f.write(rawbytes(letter))
-        f.write(code.to_bytes(4, byteorder='little'))
-    enc_text = ''
-    for i in input:
-        ch = chr(i)
-        enc_text += huffman_codes[ch]
-    enc_text_pad = pad_encoded_text(enc_text)
-    print(enc_text_pad)
-    out = get_byte_array(enc_text_pad)
-    f.write(bytes(out))
+    write_sig(f)
+    write_header(f, dict_chars)
+    write_text(f, enc_text)
+    f.close()
 
 def decompress():
     filenamein = sys.argv[2]
@@ -153,32 +188,25 @@ def decompress():
     f = open(filenamein, 'rb')
     input = f.read()
     f.close()
-    col_letters = input[3]
-    print(col_letters)
-    header = input[4:5*col_letters + 4]
-    print(header)
-    enc_text_pad = input[5*col_letters + 4:]
-    print(enc_text_pad)
-    dict_chars = dict()
-    for i in range(col_letters):
-        dict_chars[chr(header[i*5])] = int.from_bytes(header[i*5+1:i*5+5], byteorder='little')
-    print(dict_chars)
-    print(len(dict_chars.keys()))
 
+    dict_chars = parse_header(input)
+    enc_text_pad = parse_text(input)
 
-    sort_list_leafs = sorted([Leaf(dict_chars[i], i) for i in dict_chars])
+    sort_list_leafs = generate_sort_leafs(dict_chars)
     root_node = generate_tree(sort_list_leafs)
     huffman_codes = generate_huffman(root_node)
     print(huffman_codes)
     inv_huffman_codes = {v: k for k, v in huffman_codes.items()}
     print(inv_huffman_codes)
     print(enc_text_pad)
+
     bin_enc_text_pad = to_binary(enc_text_pad)
     print("bin_enc_text_pad", bin_enc_text_pad)
     bin_enc_text = remove_padding(bin_enc_text_pad)
     print("bin_enc_text", bin_enc_text)
     text = huf_decompress(bin_enc_text, inv_huffman_codes)
     print("text", text)
+
     f = open(filenameout, 'wb')
     f.write(rawbytes(text))
     f.close()
