@@ -20,7 +20,6 @@ class Node:
     
 
 def rawbytes(s):
-    """Convert a string to raw bytes without encoding"""
     outlist = []
     for cp in s:
         num = ord(cp)
@@ -65,20 +64,14 @@ def remove_padding(padded_encoded_text):
 
 def get_byte_array(padded_encoded_text):
     if (len(padded_encoded_text) % 8 != 0):
-        print("Encoded text not padded properly")
+        print("Encoded text not padded")
         exit(0)
 
     b = bytearray()
     for i in range(0, len(padded_encoded_text), 8):
         byte = padded_encoded_text[i:i+8]
         b.append(int(byte, 2))
-    print(b)
     return b
-
-
-
-def bitstring_to_bytes(s):
-    return int(s, 2).to_bytes((len(s) + 7) // 8, byteorder='big')
 
 def generate_tree(sort_list_leafs):
     while (len(sort_list_leafs) >= 2):
@@ -124,12 +117,9 @@ def write_sig(file):
     file.write(b"HUF")
 
 def write_header(file, dict_chars):
-    col_letters = len(dict_chars.keys()).to_bytes(2, byteorder='little')
-    print(col_letters)
+    col_letters = (len(dict_chars.keys())-1).to_bytes(1, byteorder='little')
     file.write(col_letters)
-    print(dict_chars)
     for letter, code in dict_chars.items():
-        #print(rawbytes(letter), code.to_bytes(4, byteorder='little'))
         file.write(rawbytes(letter))
         file.write(code.to_bytes(4, byteorder='little'))
 
@@ -142,20 +132,16 @@ def generate_sort_leafs(dict_chars):
     return sorted([Leaf(dict_chars[i], i) for i in dict_chars])
 
 def parse_header(input):
-    col_letters = int.from_bytes(input[3:5], byteorder='little')
-    header = input[5:5*col_letters + 5]
-    print(header)
+    col_letters = input[3]+1
+    header = input[4:5*col_letters + 4]
     dict_chars = dict()
     for i in range(col_letters):
-        print(i, header[i*5], int.from_bytes(header[i*5+1:i*5+5], byteorder='little'))
         dict_chars[chr(header[i*5])] = int.from_bytes(header[i*5+1:i*5+5], byteorder='little')
-    print(col_letters)
-    print(dict_chars)
     return dict_chars
 
 def parse_text(input):
-    col_letters = int.from_bytes(input[3:5], byteorder='little')
-    enc_text_pad = input[5*col_letters + 5:]
+    col_letters = input[3]+1
+    enc_text_pad = input[5*col_letters + 4:]
     return enc_text_pad
 
 def help():
@@ -169,11 +155,9 @@ def compress():
     f.close()
 
     dict_chars = counting_charaters(input)
-    print(dict_chars)
     sort_list_leafs = generate_sort_leafs(dict_chars)
     root_node = generate_tree(sort_list_leafs)
     huffman_codes = generate_huffman(root_node)
-    print(huffman_codes)
     enc_text = huf_compress(input, huffman_codes)   
 
     f = open(filenameout, 'wb')
@@ -195,17 +179,11 @@ def decompress():
     sort_list_leafs = generate_sort_leafs(dict_chars)
     root_node = generate_tree(sort_list_leafs)
     huffman_codes = generate_huffman(root_node)
-    print(huffman_codes)
     inv_huffman_codes = {v: k for k, v in huffman_codes.items()}
-    print(inv_huffman_codes)
-    print(enc_text_pad)
 
     bin_enc_text_pad = to_binary(enc_text_pad)
-    print("bin_enc_text_pad", bin_enc_text_pad)
     bin_enc_text = remove_padding(bin_enc_text_pad)
-    print("bin_enc_text", bin_enc_text)
     text = huf_decompress(bin_enc_text, inv_huffman_codes)
-    print("text", text)
 
     f = open(filenameout, 'wb')
     f.write(rawbytes(text))
